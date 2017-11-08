@@ -37,6 +37,7 @@ import json
 from datetime import datetime
 from ambari_commons import OSCheck, OSConst
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
+from ambari_server.serverConfiguration import get_ambari_properties, update_properties, AMBARI_REPO
 
 if OSCheck.is_windows_family():
   from ambari_commons.os_utils import run_os_command, run_in_shell
@@ -744,15 +745,20 @@ class BootstrapDefault(Bootstrap):
     self.host_log.write("==========================\n")
     self.host_log.write("Running setup agent script...")
 
+    properties = get_ambari_properties()
     ambariRepoUrl = "null"
     exitstatus = 0
+    agentInfo = None
     if params.cluster_os_type != agent_os_type:
       if params.ambariRepoUrls == "null":
-        exitstatus = 44
+        if properties[AMBARI_REPO+'.'+agent_os_type]:
+          ambariRepoUrl = properties[AMBARI_REPO+'.'+agent_os_type]
+        else:
+          exitstatus = 44
       else:
         ambariRepoUrls = json.loads(params.ambariRepoUrls)
         agentInfo = next((info for info in ambariRepoUrls if info['os_type'] == agent_os_type), None)
-        if agentInfo:
+        if agentInfo is not None:
           ambariRepoUrl = agentInfo['ambari_repo']
         else:
           exitstatus = 44
@@ -762,7 +768,10 @@ class BootstrapDefault(Bootstrap):
               params.bootdir, self.host_log)
     retcode = ssh.run()
 
-    if exitstatus == 44:
+    if retcode['exitstatus'] == 0 and agentInfo is not None:
+      properties.process_pair(AMBARI_REPO+'.'+agentInfo['os_type'], agentInfo['ambari_repo'])
+      update_properties(properties)
+    elif exitstatus == 44:
       retcode['exitstatus'] = 44
       self.host_log.write("Ambari Repo file not found for os_type "+agent_os_type)
 
