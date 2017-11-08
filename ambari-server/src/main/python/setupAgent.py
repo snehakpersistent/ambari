@@ -24,6 +24,7 @@ import sys
 import logging
 import os
 import subprocess
+import ConfigParser
 
 from ambari_commons import OSCheck, OSConst
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
@@ -301,32 +302,34 @@ def checkServerReachability(host, port):
 #               1        Password
 #               2        Host name
 #               3        User to run agent as
-#      X        4        Project Version (Ambari)
-#      X        5        Server port
+#               4        Ambari Repo Url
+#      X        5        Project Version (Ambari)
+#      X        6        Server port
 def parseArguments(argv=None):
   if argv is None:  # make sure that arguments was passed
     return {"exitstatus": 2, "log": "No arguments were passed"}
   args = argv[1:]  # shift path to script
-  if len(args) < 3:
+  if len(args) < 4:
     return {"exitstatus": 1, "log": "Not all required arguments were passed"}
 
   expected_hostname = args[0]
   passPhrase = args[1]
   hostname = args[2]
   user_run_as = args[3]
+  ambariRepoUrl = args[4]
   projectVersion = ""
   server_port = 8080
 
-  if len(args) > 4:
-    projectVersion = args[4]
-
   if len(args) > 5:
+    projectVersion = args[5]
+
+  if len(args) > 6:
     try:
-      server_port = int(args[5])
+      server_port = int(args[6])
     except (Exception):
       server_port = 8080
 
-  parsed_args = (expected_hostname, passPhrase, hostname, user_run_as, projectVersion, server_port)
+  parsed_args = (expected_hostname, passPhrase, hostname, user_run_as, ambariRepoUrl, projectVersion, server_port)
   return {"exitstatus": 0, "log": "", "parsed_args": parsed_args}
 
 def run_setup(argv=None):
@@ -335,7 +338,15 @@ def run_setup(argv=None):
   if (retcode["exitstatus"] != 0):
     return retcode
 
-  (expected_hostname, passPhrase, hostname, user_run_as, projectVersion, server_port) = retcode["parsed_args"]
+  (expected_hostname, passPhrase, hostname, user_run_as, ambariRepoUrl, projectVersion, server_port) = retcode["parsed_args"]
+
+  ambari_repo_path = get_ambari_repo_file_full_name()
+  config = ConfigParser.RawConfigParser()
+  config.read(ambari_repo_path)
+  baseurl = config.get(config.sections()[0],'baseurl')
+
+  if ambariRepoUrl != "null":
+    subprocess.call(['sed', '-i', '-e', 's,'+baseurl+','+ambariRepoUrl+',g', ambari_repo_path])
 
   retcode = checkServerReachability(hostname, server_port)
   if (retcode["exitstatus"] != 0):
