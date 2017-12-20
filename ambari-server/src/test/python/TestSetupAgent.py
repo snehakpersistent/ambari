@@ -20,8 +20,6 @@ from mock.mock import MagicMock
 from unittest import TestCase
 from mock.mock import patch
 import sys
-import ConfigParser
-import os
 
 from ambari_commons import OSCheck
 from only_for_platform import get_platform, not_for_platform, only_for_platform, os_distro_value, PLATFORM_WINDOWS
@@ -60,13 +58,6 @@ class TestSetupAgent(TestCase):
     self.assertTrue(hostname in cmdStr)
     pass
 
-
-  def test_parse_argument(self,):
-    arguments=["", "test.hst", "passphrase", "test", "root", "", 8080, "ambariRepoUrl"]
-    ret=setup_agent.parseArguments(arguments)
-    parsed_args = ("test.hst", "passphrase", "test", "root", "", 8080, "ambariRepoUrl")
-    self.assertEqual(ret["exitstatus"], 0)
-    self.assertEqual(ret["parsed_args"], parsed_args)
 
   @not_for_platform(PLATFORM_WINDOWS)
   @patch.object(setup_agent, 'execOsCommand')
@@ -533,50 +524,6 @@ class TestSetupAgent(TestCase):
     self.assertTrue("exitstatus" in ret)
     self.assertEqual(ret["exitstatus"], 1)
     self.assertTrue(get_ambari_repo_file_full_name_mock() in ret["log"]) # ambari repo file not found message
-
-    # ambari repo base url passed for setting in repo file
-    def deleteDummyRepo():
-      if os.path.isfile('/tmp/dummy.repo'):
-        os.remove('/tmp/dummy.repo')
-
-    def createDummyRepo():
-      if not os.path.isfile('/tmp/dummy.repo'):
-        os.mknod('/tmp/dummy.repo')
-      fn = open('/tmp/dummy.repo','wt')
-      fn.write("[AMBARI.2.4.2.4-2.x]\n")
-      fn.write("baseurl=repoUrl")
-      fn.close()
-
-    createDummyRepo()
-    installAgent_mock.reset_mock()
-    getOptimalVersion_mock.reset_mock()
-    os_path_exists_mock.reset_mock()
-    installAgent_mock.return_value = {'log': 'log', 'exitstatus': 0}
-    getOptimalVersion_mock.return_value = {'log': '1.1.1', 'exitstatus': 0}
-    os_path_exists_mock.return_value = True
-    get_ambari_repo_file_full_name_mock.return_value = "/tmp/dummy.repo"
-    ret = setup_agent.main(("setupAgent.py","agents_host","password", "server_hostname","1.1.1","8080","ambariRepoUrl"))
-    self.assertTrue(installAgent_mock.called)
-    self.assertTrue("exitstatus" in ret)
-    self.assertEqual(ret["exitstatus"], 0)
-    config = ConfigParser.RawConfigParser()
-    config.read("/tmp/dummy.repo")
-    baseurl = config.get(config.sections()[0],'baseurl')
-    self.assertEqual(baseurl, "repoUrl")
-
-    exit_mock.reset_mock()
-    installAgent_mock.reset_mock()
-    getOptimalVersion_mock.reset_mock()
-    os_path_exists_mock.reset_mock()
-    installAgent_mock.return_value = {'log': 'log', 'exitstatus': 1}
-    getOptimalVersion_mock.return_value = {'log': '1.1.1', 'exitstatus': 0}
-    os_path_exists_mock.return_value = True
-    get_ambari_repo_file_full_name_mock.return_value = "/tmp/dummy.repo"
-    ret = setup_agent.main(("setupAgent.py","agents_host","password", "server_hostname","root","1.1.1","8080","ambariRepoUrl"))
-    self.assertTrue(installAgent_mock.called)
-    self.assertTrue("exitstatus" in ret)
-    self.assertEqual(ret["exitstatus"], 44)
-    deleteDummyRepo()
     pass
 
   @patch.object(setup_agent, 'execOsCommand')
