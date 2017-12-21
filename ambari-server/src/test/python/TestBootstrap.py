@@ -26,7 +26,7 @@ import tempfile
 import pprint
 
 from ambari_commons.os_check import OSCheck
-from bootstrap import PropertySetter, PBootstrap, Bootstrap, BootstrapDefault, SharedState, HostLog, SCP, SSH
+from bootstrap import PBootstrap, Bootstrap, BootstrapDefault, SharedState, HostLog, SCP, SSH
 from unittest import TestCase
 from subprocess import Popen
 from bootstrap import AMBARI_PASSPHRASE_VAR_NAME
@@ -34,7 +34,6 @@ from mock.mock import MagicMock, call
 from mock.mock import patch
 from mock.mock import create_autospec
 from only_for_platform import not_for_platform, os_distro_value, PLATFORM_WINDOWS
-import ambari_server.serverConfiguration
 
 @not_for_platform(PLATFORM_WINDOWS)
 class TestBootstrap(TestCase):
@@ -112,10 +111,9 @@ class TestBootstrap(TestCase):
     bootstrap_obj = Bootstrap("hostname", shared_state)
     utime = 1234
     bootstrap_obj.getUtime = MagicMock(return_value=utime)
-    ambari_repo_url = "ambariRepoUrl"
-    ret = bootstrap_obj.getRunSetupWithPasswordCommand("hostname", ambari_repo_url)
+    ret = bootstrap_obj.getRunSetupWithPasswordCommand("hostname")
     expected = "/var/lib/ambari-agent/tmp/ambari-sudo.sh -S python /var/lib/ambari-agent/tmp/setupAgent{0}.py hostname TEST_PASSPHRASE " \
-               "ambariServer root  8440 {1}< /var/lib/ambari-agent/tmp/host_pass{0}".format(utime, ambari_repo_url)
+               "ambariServer root  8440 < /var/lib/ambari-agent/tmp/host_pass{0}".format(utime)
     self.assertEquals(ret, expected)
 
 
@@ -161,8 +159,8 @@ class TestBootstrap(TestCase):
                                "setupAgentFile", "ambariServer", "centos6",
                                version, "8440", "root")
     bootstrap_obj = Bootstrap("hostname", shared_state)
-    runSetupCommand = bootstrap_obj.getRunSetupCommand("hostname", "null")
-    self.assertTrue(runSetupCommand.endswith(version + " null"))
+    runSetupCommand = bootstrap_obj.getRunSetupCommand("hostname")
+    self.assertTrue(runSetupCommand.endswith(version + " 8440"))
 
 
   def test_agent_setup_command_without_project_version(self):
@@ -172,8 +170,8 @@ class TestBootstrap(TestCase):
                                "setupAgentFile", "ambariServer", "centos6",
                                version, "8440", "root")
     bootstrap_obj = Bootstrap("hostname", shared_state)
-    runSetupCommand = bootstrap_obj.getRunSetupCommand("hostname", "null")
-    self.assertTrue(runSetupCommand.endswith(" null"))
+    runSetupCommand = bootstrap_obj.getRunSetupCommand("hostname")
+    self.assertTrue(runSetupCommand.endswith(" 8440"))
 
 
   # TODO: test_os_check_fail_fails_bootstrap_execution
@@ -514,16 +512,15 @@ class TestBootstrap(TestCase):
                                None, "8440", "root")
     bootstrap_obj = Bootstrap("hostname", shared_state)
     getOsCheckScriptRemoteLocation_mock.return_value = "OsCheckScriptRemoteLocation"
-    expected = {'errormsg': '', 'exitstatus': 0, 'log': 'centos6 Connection to host1 closed.'}
+    expected = 42
     init_mock.return_value = None
     run_mock.return_value = expected
     res = bootstrap_obj.runOsCheckScript()
     self.assertEquals(res, expected)
     command = str(init_mock.call_args[0][4])
-    self.assertEqual(res["log"].split()[0], "centos6")
     self.assertEqual(command,
                      "chmod a+x OsCheckScriptRemoteLocation && "
-                     "env PYTHONPATH=$PYTHONPATH:/var/lib/ambari-agent/tmp OsCheckScriptRemoteLocation")
+                     "env PYTHONPATH=$PYTHONPATH:/var/lib/ambari-agent/tmp OsCheckScriptRemoteLocation centos6")
 
 
   @patch.object(SSH, "__init__")
@@ -532,14 +529,12 @@ class TestBootstrap(TestCase):
   @patch.object(HostLog, "write")
   def test_runSetupAgent(self, write_mock, run_mock,
                          getRunSetupCommand_mock, init_mock):
-    json_string = '[{\"os_type\":\"redhat-ppc7\",\"ambari_repo\":\"ambari_repo_url\",\"ambariRepoUIError\":\"\",\"hasError\":false,\"hosts\":[\"host1\"]}]'
     shared_state = SharedState("root", "123", "sshkey_file", "scriptDir", "bootdir",
                                "setupAgentFile", "ambariServer", "centos6",
                                None, "8440", "root")
     bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "redhat-ppc7"
     getRunSetupCommand_mock.return_value = "RunSetupCommand"
-    expected = {'log': 'log', 'exitstatus': 0}
+    expected = 42
     init_mock.return_value = None
     run_mock.return_value = expected
     res = bootstrap_obj.runSetupAgent()
@@ -547,111 +542,6 @@ class TestBootstrap(TestCase):
     command = str(init_mock.call_args[0][4])
     self.assertEqual(command, "RunSetupCommand")
 
-  @patch.object(SSH, "__init__")
-  @patch.object(BootstrapDefault, "getRunSetupCommand")
-  @patch.object(SSH, "run")
-  @patch.object(HostLog, "write")
-  @patch("os.environ")
-  def test_runSetupAgentForAmbariRepoUrl(self, environ_mock, write_mock, run_mock, getRunSetupCommand_mock, init_mock,):
-    environ_mock.__getitem__.return_value = "/tmp/"
-    getRunSetupCommand_mock.return_value = "RunSetupCommand"
-    run_mock.return_value = {'log': 'log', 'exitstatus': 0}
-    init_mock.return_value = None
-
-    if not os.path.exists('/tmp/ambari.properties'):
-      os.mknod('/tmp/ambari.properties')
-
-    #If Everything works well when cluster_os and agent_os type are different
-    json_string = '[{\"os_type\":\"redhat-ppc7\",\"ambari_repo\":\"ambari_repo_url\",\"ambariRepoUIError\":\"\",\"hasError\":false,\"hosts\":[\"host1\"]}]'
-    shared_state = SharedState("root", "123", "sshkey_file", "scriptDir", "bootdir",
-                               "setupAgentFile", "ambariServer", "centos6", None, "8440", "root", json_string)
-    bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "redhat-ppc7"
-    expected = {'log': 'log', 'exitstatus': 0}
-    run_mock.return_value = {'log': 'log', 'exitstatus': 0}
-    res = bootstrap_obj.runSetupAgent()
-    self.assertEqual(res,expected)
-
-    #If Everything works well when cluster_os and agent_os type are same
-    json_string = '[{\"os_type\":\"redhat-ppc7\",\"ambari_repo\":\"ambari_repo_url\",\"ambariRepoUIError\":\"\",\"hasError\":false,\"hosts\":[\"host1\"]}]'
-    shared_state = SharedState("root", "123", "sshkey_file", "scriptDir", "bootdir",
-                               "setupAgentFile", "ambariServer", "redhat-ppc7", None, "8440", "root", json_string)
-    bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "redhat-ppc7"
-    expected = {'log': 'log', 'exitstatus': 0}
-    res = bootstrap_obj.runSetupAgent()
-    self.assertEqual(res,expected)
-
-    #If ambariRepoUrl is null but found in property file
-    shared_state = SharedState("root", "123", "sshkey_file", "scriptDir", "bootdir",
-                               "setupAgentFile", "ambariServer", "centos6", None, "8440", "root", "null")
-    bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "redhat-ppc7"
-    expected = {'log': 'log', 'exitstatus': 0}
-    run_mock.return_value = expected
-    res = bootstrap_obj.runSetupAgent()
-    self.assertEqual(res,expected)
-
-    #If ambariRepoUrl is not null and user is not root
-    json_string = '[{\"os_type\":\"redhat-ppc7\",\"ambari_repo\":\"ambari_repo_url\",\"ambariRepoUIError\":\"\",\"hasError\":false,\"hosts\":[\"host1\"]}]'
-    shared_state = SharedState("user", "123", "sshkey_file", "scriptDir", "bootdir",
-                               "setupAgentFile", "ambariServer", "centos6", None, "8440", "user", json_string)
-    bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "redhat-ppc7"
-    expected = {'log': 'log', 'exitstatus': 0}
-    run_mock.return_value = {'log': 'log', 'exitstatus': 0}
-    res = bootstrap_obj.runSetupAgent()
-    self.assertTrue(write_mock.called)
-    self.assertEqual(res,expected)
-
-    #If ambariRepoUrl is not null and agentInfo is null
-    json_string = '[{\"os_type\":\"redhat\",\"ambari_repo\":\"ambari_repo_url\",\"ambariRepoUIError\":\"\",\"hasError\":false,\"hosts\":[\"host1\"]}]'
-    shared_state = SharedState("root", "123", "sshkey_file", "scriptDir", "bootdir",
-                               "setupAgentFile", "ambariServer", "centos6", None, "8440", "root", json_string)
-    bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "redhat-ppc7"
-    expected = {'log': 'log', 'exitstatus': 44}
-    run_mock.return_value = {'log': 'log', 'exitstatus': 0}
-    res = bootstrap_obj.runSetupAgent()
-    self.assertEqual(res,expected)
-
-    f = open("/tmp/ambari.properties","r")
-    lines = f.readlines()
-    f.close()
-    f = open("/tmp/ambari.properties","w")
-    for line in lines:
-      if not "ambari.repo." + bootstrap_obj.agent_os_type in line:
-        f.write(line)
-    f.close()
-
-    #If AmbariRepoUrl not pass through UI and not found in property file
-    shared_state = SharedState("root", "123", "sshkey_file", "scriptDir", "bootdir",
-                               "setupAgentFile", "ambariServer", "centos6",
-                               None, "8440", "root", "null")
-    bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "redhat-ppc7"
-    expected = {'log': 'log', 'exitstatus': 44}
-    res = bootstrap_obj.runSetupAgent()
-    self.assertEqual(res,expected)
-
-  @patch("ambari_server.serverConfiguration.backup_file_in_temp")
-  @patch("os.environ")
-  def test_PropertySetter(self, environ_mock, backup_file_in_temp_mock):
-    environ_mock.__getitem__.return_value = "/tmp/"
-    backup_file_in_temp_mock.return_value = True
-    propertysetter_obj = PropertySetter()
-    res = propertysetter_obj.setProperty("abc","bcd")
-    f = open("/tmp/ambari.properties","r")
-    lines = f.readlines()
-    for line in lines:
-      if "abc" in line:
-        self.assertEqual(line,"abc=bcd\n")
-    f.close()
-    f = open("/tmp/ambari.properties","w")
-    for line in lines:
-      if not "abc" in line:
-        f.write(line)
-    f.close()
 
   @patch.object(BootstrapDefault, "hasPassword")
   @patch.object(BootstrapDefault, "getRunSetupWithPasswordCommand")
@@ -667,12 +557,12 @@ class TestBootstrap(TestCase):
     hasPassword_mock.return_value = True
     getRunSetupWithPasswordCommand_mock.return_value = "RunSetupWithPasswordCommand"
     getRunSetupWithoutPasswordCommand_mock.return_value = "RunSetupWithoutPasswordCommand"
-    res = bootstrap_obj.getRunSetupCommand("dummy-host", "null")
-    self.assertEqual(res, "RunSetupWithPasswordCommand", "null")
+    res = bootstrap_obj.getRunSetupCommand("dummy-host")
+    self.assertEqual(res, "RunSetupWithPasswordCommand")
     # Without password
     hasPassword_mock.return_value = False
-    res = bootstrap_obj.getRunSetupCommand("dummy-host", "null")
-    self.assertEqual(res, "RunSetupWithoutPasswordCommand", "null")
+    res = bootstrap_obj.getRunSetupCommand("dummy-host")
+    self.assertEqual(res, "RunSetupWithoutPasswordCommand")
 
 
   @patch.object(HostLog, "write")
@@ -682,16 +572,7 @@ class TestBootstrap(TestCase):
                                "setupAgentFile", "ambariServer", "centos6",
                                None, "8440", "root")
     bootstrap_obj = Bootstrap("hostname", shared_state)
-    bootstrap_obj.agent_os_type = "centos6"
     done_file = os.path.join(tmp_dir, "hostname.done")
-    expected = 44
-    bootstrap_obj.createDoneFile(expected)
-    with open(done_file) as df:
-      res = df.read()
-      self.assertEqual(res, str(expected) + ":" + bootstrap_obj.agent_os_type)
-    os.unlink(done_file)
-
-    #When return code is 42
     expected = 42
     bootstrap_obj.createDoneFile(expected)
     with open(done_file) as df:

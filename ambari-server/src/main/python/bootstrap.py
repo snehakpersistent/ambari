@@ -36,7 +36,6 @@ import re
 from datetime import datetime
 from ambari_commons import OSCheck, OSConst
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
-from ambari_server.serverConfiguration import get_ambari_properties, AMBARI_REPO
 
 if OSCheck.is_windows_family():
   from ambari_commons.os_utils import run_os_command, run_in_shell
@@ -408,7 +407,6 @@ class BootstrapDefault(Bootstrap):
   TEMP_FOLDER = DEFAULT_AGENT_TEMP_FOLDER
   OS_CHECK_SCRIPT_FILENAME = "os_check_type.py"
   PASSWORD_FILENAME = "host_pass"
-  agent_os_type = ""
 
   def getRemoteName(self, filename):
     full_name = os.path.join(self.TEMP_FOLDER, filename)
@@ -604,7 +602,7 @@ class BootstrapDefault(Bootstrap):
     else:
       return server_port
 
-  def getRunSetupWithPasswordCommand(self, expected_hostname, ambariRepoUrl):
+  def getRunSetupWithPasswordCommand(self, expected_hostname):
     setupFile = self.getRemoteName(self.SETUP_SCRIPT_FILENAME)
     passphrase = os.environ[AMBARI_PASSPHRASE_VAR_NAME]
     server = self.shared_state.ambari_server
@@ -614,9 +612,9 @@ class BootstrapDefault(Bootstrap):
     passwordFile = self.getPasswordFile()
     return "{sudo} -S python ".format(sudo=AMBARI_SUDO) + str(setupFile) + " " + str(expected_hostname) + \
            " " + str(passphrase) + " " + str(server)+ " " + quote_bash_args(str(user_run_as)) + " " + str(version) + \
-           " " + str(port) + " " + str(ambariRepoUrl) + " < " + str(passwordFile)
+           " " + str(port) + " < " + str(passwordFile)
 
-  def getRunSetupWithoutPasswordCommand(self, expected_hostname, ambariRepoUrl):
+  def getRunSetupWithoutPasswordCommand(self, expected_hostname):
     setupFile=self.getRemoteName(self.SETUP_SCRIPT_FILENAME)
     passphrase=os.environ[AMBARI_PASSPHRASE_VAR_NAME]
     server=self.shared_state.ambari_server
@@ -625,7 +623,7 @@ class BootstrapDefault(Bootstrap):
     port=self.getAmbariPort()
     return "{sudo} python ".format(sudo=AMBARI_SUDO) + str(setupFile) + " " + str(expected_hostname) + \
            " " + str(passphrase) + " " + str(server)+ " " + quote_bash_args(str(user_run_as)) + " " + str(version) + \
-           " " + str(port) + " " + str(ambariRepoUrl)
+           " " + str(port)
 
   def runCreatePythonWrapScript(self):
     params = self.shared_state
@@ -645,15 +643,13 @@ class BootstrapDefault(Bootstrap):
     self.host_log.write("==========================\n")
     self.host_log.write("Running OS type check...")
 
-    command = "chmod a+x %s && %s %s" % \
+    command = "chmod a+x %s && %s %s %s" % \
               (self.getOsCheckScriptRemoteLocation(),
-               PYTHON_ENV, self.getOsCheckScriptRemoteLocation())
+               PYTHON_ENV, self.getOsCheckScriptRemoteLocation(), params.cluster_os_type)
 
     ssh = SSH(params.user, params.sshPort, params.sshkey_file, self.host, command,
               params.bootdir, self.host_log)
     retcode = ssh.run()
-    # log contains agent os_type followed by Connection closed message
-    self.agent_os_type = retcode["log"].split()[0]
     self.host_log.write("\n")
     return retcode
 
@@ -733,37 +729,20 @@ class BootstrapDefault(Bootstrap):
     self.host_log.write("\n")
     return retcode
 
-  def getRunSetupCommand(self, expected_hostname, ambariRepoUrl):
+  def getRunSetupCommand(self, expected_hostname):
     if self.hasPassword():
-      return self.getRunSetupWithPasswordCommand(expected_hostname, ambariRepoUrl)
+      return self.getRunSetupWithPasswordCommand(expected_hostname)
     else:
-      return self.getRunSetupWithoutPasswordCommand(expected_hostname, ambariRepoUrl)
+      return self.getRunSetupWithoutPasswordCommand(expected_hostname)
 
   def runSetupAgent(self):
     params = self.shared_state
     self.host_log.write("==========================\n")
     self.host_log.write("Running setup agent script...")
-
-    properties = get_ambari_properties()
-    retcode = None
-
-    if params.cluster_os_type == self.agent_os_type:
-      command = self.getRunSetupCommand(self.host, "")
-      ssh = SSH(params.user, params.sshPort, params.sshkey_file, self.host, command,
-                params.bootdir, self.host_log)
-      retcode = ssh.run()
-    else:
-      #check properties for ambari.repo.os_type if not found check params
-      ambariRepoUrl = properties[AMBARI_REPO + '.' + self.agent_os_type]
-      if ambariRepoUrl:
-        command = self.getRunSetupCommand(self.host, ambariRepoUrl)
-        ssh = SSH(params.user, params.sshPort, params.sshkey_file, self.host, command,
-                  params.bootdir, self.host_log)
-        retcode = ssh.run()
-      else:
-        retcode = {"exitstatus": 1, "log": "Ambari repo not found for os_type " + self.agent_os_type,
-                   "errormsg": "Ambari repo not found for os_type " + self.agent_os_type}
-
+    command = self.getRunSetupCommand(self.host)
+    ssh = SSH(params.user, params.sshPort, params.sshkey_file, self.host, command,
+              params.bootdir, self.host_log)
+    retcode = ssh.run()
     self.host_log.write("\n")
     return retcode
 
