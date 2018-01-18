@@ -759,8 +759,8 @@ class BootstrapDefault(Bootstrap):
                   params.bootdir, self.host_log)
         retcode = ssh.run()
       else:
-        retcode = {"exitstatus": 1, "log": "Ambari repo not found for os_family '{0}'. Please set ambari repo baseurl using command: ambari-server setup --ambari-repo <ambari repo baseurl>.".format(self.agent_os_type),
-                   "errormsg": "Ambari repo not found for os_family '{0}'".format(self.agent_os_type)}
+        retcode = {"exitstatus": 1, "log": "Ambari repo not found for os_type '{0}'. Please set ambari repo baseurl using command: ambari-server setup --ambari-repo <ambari repo baseurl>.".format(self.agent_os_type),
+                   "errormsg": "Ambari repo not found for os_type '{0}'".format(self.agent_os_type)}
 
     self.host_log.write("\n")
     return retcode
