@@ -585,7 +585,7 @@ class TestBootstrap(TestCase):
                                "setupAgentFile", "ambariServer", "centos6", None, "8440", "root")
     bootstrap_obj = Bootstrap("hostname", shared_state)
     bootstrap_obj.agent_os_type = "redhat-ppc7"
-    expected = {"errormsg": "Ambari repo not found for os_type '{0}'".format(bootstrap_obj.agent_os_type), "exitstatus": 1, "log": "Ambari repo not found for os_type '{0}'. Please set ambari repo baseurl using command: ambari-server setup --ambari-repo <ambari repo baseurl>.".format(bootstrap_obj.agent_os_type)}
+    expected = {"errormsg": "Ambari repo not found for os_family '{0}'".format(bootstrap_obj.agent_os_type), "exitstatus": 1, "log": "Ambari repo not found for os_family '{0}'. Please set ambari repo baseurl using command: ambari-server setup --ambari-repo <ambari repo baseurl>.".format(bootstrap_obj.agent_os_type)}
     run_mock.return_value = {'log': 'log', 'exitstatus': 0}
     res = bootstrap_obj.runSetupAgent()
     self.assertEqual(res,expected)
